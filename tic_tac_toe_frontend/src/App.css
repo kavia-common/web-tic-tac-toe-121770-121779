@@ -157,6 +157,10 @@ body {
   transform: translateY(0);
 }
 
+.btn-reset-font {
+  font-family: Arial, sans-serif;
+}
+
 /* Chatbox */
 .chatbox {
   width: min(94vw, 720px);

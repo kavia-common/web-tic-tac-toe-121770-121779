@@ -195,11 +195,11 @@ function App() {
         <div className="controls">
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary btn-reset-font"
             onClick={restartGame}
             aria-label="Restart game"
           >
-            Restart
+            Reset
           </button>
         </div>
 
