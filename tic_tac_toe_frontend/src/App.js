@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import './App.css';
 import Board from './components/Board.jsx';
 import GameStatus from './components/GameStatus.jsx';
+import ChatBox from './components/ChatBox.jsx';
 import { calculateWinner, isBoardFull } from './utils/game';
 import { getBestMove } from './utils/ai';
+import { sendTrashTalk, shouldEnableTrashTalk } from './utils/openai';
 
 // Constants
 const EMPTY_BOARD = Array(9).fill(null);
@@ -24,6 +26,16 @@ function App() {
   const [isAiThinking, setIsAiThinking] = useState(false);
   const aiTimeoutRef = useRef(null);
 
+  // Chatbot state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState(null);
+  const [chatEnabled, setChatEnabled] = useState(false);
+
+  useEffect(() => {
+    setChatEnabled(shouldEnableTrashTalk());
+  }, []);
+
   // Handle AI turn automatically
   useEffect(() => {
     if (winner || isTie) return;
@@ -38,12 +50,17 @@ function App() {
           next[idx] = 'O';
           const { winner: newWinner, line } = calculateWinner(next);
           setSquares(next);
+
+          const tieNow = !newWinner && isBoardFull(next);
+          // Fire off chatbot banter for AI move
+          triggerTrashTalk(next, 'O', idx, newWinner, tieNow);
+
           if (newWinner) {
             setWinnerInfo({ winner: newWinner, line });
             setIsAiThinking(false);
             return;
           }
-          if (isBoardFull(next)) {
+          if (tieNow) {
             setIsTie(true);
             setIsAiThinking(false);
             return;
@@ -83,12 +100,16 @@ function App() {
     const { winner: newWinner, line } = calculateWinner(next);
     setSquares(next);
 
+    const tieNow = !newWinner && isBoardFull(next);
+    // Fire off chatbot banter for human move
+    triggerTrashTalk(next, 'X', index, newWinner, tieNow);
+
     if (newWinner) {
       setWinnerInfo({ winner: newWinner, line });
       return;
     }
 
-    if (isBoardFull(next)) {
+    if (tieNow) {
       setIsTie(true);
       return;
     }
@@ -111,6 +132,40 @@ function App() {
     setWinnerInfo({ winner: null, line: null });
     setIsTie(false);
     setIsAiThinking(false);
+    // Reset chat state
+    setChatMessages([]);
+    setChatError(null);
+    setChatLoading(false);
+  };
+
+  /**
+   * PUBLIC_INTERFACE
+   * triggerTrashTalk
+   * Sends a banter request to the OpenAI API if enabled; manages loading and errors.
+   * @param {Array<('X'|'O'|null)>} board - new board AFTER the move
+   * @param {'X'|'O'} player - who made the move
+   * @param {number} index - index of the move just played
+   * @param {'X'|'O'|null} newWinner - winner after the move (if any)
+   * @param {boolean} tieNow - whether the board is now a tie
+   */
+  const triggerTrashTalk = async (board, player, index, newWinner, tieNow) => {
+    if (!chatEnabled) return;
+    try {
+      setChatLoading(true);
+      setChatError(null);
+      const message = await sendTrashTalk(board, player, index, {
+        winner: newWinner,
+        tie: Boolean(tieNow),
+      });
+      setChatMessages((prev) => [
+        { id: Date.now() + Math.random(), role: 'assistant', content: message },
+        ...prev,
+      ].slice(0, 20));
+    } catch (err) {
+      setChatError(err?.message || 'Chatbot failed to respond.');
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   const interactionsDisabled = Boolean(winner || isTie || isAiThinking);
@@ -147,6 +202,13 @@ function App() {
             Restart
           </button>
         </div>
+
+        <ChatBox
+          messages={chatMessages}
+          loading={chatLoading}
+          enabled={chatEnabled}
+          error={chatError}
+        />
       </main>
     </div>
   );
